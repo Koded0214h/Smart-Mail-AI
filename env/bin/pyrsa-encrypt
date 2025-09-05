@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/Users/koded/Desktop/Code/Hackathon/Smart Mail AI/env/bin/python3.10" "$0" "$@"
+'''exec' "/Users/koded/Desktop/Code/Smart Mail AI/env/bin/python3.13" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re

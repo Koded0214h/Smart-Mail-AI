@@ -20,19 +20,4 @@ ENV/
 *.env
 *.venv
 
-# macOS
-.DS_Store
-
-# Logs
-logs/
-*.log
-
-# Editor directories and files
-.idea/
-.vscode/
-*.sublime-workspace
-*.sublime-project
-
-# Misc
-*.swp
-*.swo 
+mail_backend/.env

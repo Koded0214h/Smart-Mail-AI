@@ -1,0 +1,92 @@
+{% load socialaccount %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SmartMail AI - Inbox</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .filter-form { margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+        .email-item { border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+        .email-subject { font-weight: bold; color: #333; }
+        .email-from { color: #666; font-size: 0.9em; }
+        .email-snippet { color: #444; margin-top: 5px; }
+        .email-date { color: #999; font-size: 0.8em; text-align: right; }
+        .reconnect-banner { 
+            background: #fff3cd; 
+            border: 1px solid #ffeaa7; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📧 SmartMail AI - Inbox</h1>
+        <div>
+            <a href="{% url 'inbox' %}">Refresh</a> | 
+            <a href="{% url 'logout' %}">Logout</a>
+        </div>
+    </div>
+
+    {% if needs_reconnect %}
+    <div class="reconnect-banner">
+        <h3>🔑 Authentication Required</h3>
+        <p>Your Google session has expired or needs to be reconnected.</p>
+        <a href="{% provider_login_url 'google' %}" style="background: #007bff; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; display: inline-block; margin-top: 10px;">
+            Reconnect Google Account
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Only show content if we don't need to reconnect -->
+    {% if not needs_reconnect %}
+    <!-- Filter Form -->
+    <div class="filter-form">
+        <form method="GET" action="{% url 'inbox' %}">
+            <label for="keywords">Filter by keywords (comma-separated):</label>
+            <input type="text" id="keywords" name="keywords" value="{{ keywords }}" 
+                   placeholder="urgent,important,meeting" style="width: 300px;">
+            <button type="submit">Apply Filter</button>
+            {% if keywords %}
+                <a href="{% url 'inbox' %}" style="margin-left: 10px;">Clear Filter</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if error %}
+        <div style="color: red; padding: 10px; background: #ffe6e6; border-radius: 5px;">
+            ❌ Error: {{ error }}
+        </div>
+    {% endif %}
+
+    {% if emails %}
+        <p>Found {{ emails|length }} emails{% if keywords %} matching "{{ keywords }}"{% endif %}:</p>
+        
+        <div class="email-list">
+            {% for email in emails %}
+                <div class="email-item">
+                    <div class="email-subject">
+                        <a href="{% url 'email_detail' email.id %}">{{ email.subject }}</a>
+                    </div>
+                    <div class="email-from">From: {{ email.from }}</div>
+                    <div class="email-snippet">{{ email.snippet }}</div>
+                    <div class="email-date">{{ email.date }}</div>
+                    <div class="email-category">Category: {{ email.category }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 40px; color: #666;">
+            {% if keywords %}
+                <p>No emails found matching "{{ keywords }}".</p>
+            {% else %}
+                <p>No emails found in your inbox.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+    {% endif %}
+</body>
+</html>
