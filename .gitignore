@@ -20,5 +20,7 @@ ENV/
 *.env
 *.venv
 
+mail_backend/env/
+mail_backend/.env
 mail_backend/.env
 mail_backend/db.sqlite3
