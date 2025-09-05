@@ -7,6 +7,7 @@ from googleapiclient.errors import HttpError
 from allauth.socialaccount.models import SocialToken, SocialAccount
 from .utils import get_gmail_service, get_gmail_credentials, categorize_email
 from .forms import ProfileForm
+from .models import Profile
 
 def register_view(request):
     if request.method == 'POST':
@@ -20,20 +21,18 @@ def register_view(request):
 
 @login_required
 def complete_profile(request):
-    profile, created = request.user.profile, False
-    if not hasattr(request.user, 'profile'):
-        from .models import Profile
-        profile = Profile.objects.create(user=request.user)
+    profile, created = Profile.objects.get_or_create(user=request.user)
 
     if request.method == 'POST':
         form = ProfileForm(request.POST, instance=profile)
         if form.is_valid():
             form.save()
-            return redirect('inbox')  # wherever you want after success
+            return redirect('inbox')  # Redirect to inbox after saving
     else:
         form = ProfileForm(instance=profile)
 
     return render(request, 'complete_profile.html', {'form': form})
+
 
 
 def login_view(request):
@@ -56,6 +55,16 @@ def home_redirect(request):
 
 @login_required
 def inbox_view(request):
+    # Ensure profile exists
+    try:
+        profile = request.user.profile
+    except Profile.DoesNotExist:
+        return redirect("complete_profile")
+
+    # If no filters set, force user to complete profile
+    if not profile.filters:
+        return redirect("complete_profile")
+
     try:
         service = get_gmail_service(request.user)
         if not service:
@@ -65,18 +74,21 @@ def inbox_view(request):
                 'needs_reconnect': True
             })
 
-        # Get filter keywords from GET parameters
+        # Get filters from profile
+        filter_keywords = profile.get_filter_list()
+
+        # Allow override with query param (?keywords=foo,bar)
         keywords = request.GET.get('keywords', '')
-        query = ''
-        
         if keywords:
-            keyword_list = [kw.strip() for kw in keywords.split(',')]
-            query = ' OR '.join([f'"{kw}"' for kw in keyword_list if kw])
-        
-        # Test the service first with a simple call
+            filter_keywords = [kw.strip().lower() for kw in keywords.split(",") if kw.strip()]
+
+        query = ""
+        if filter_keywords:
+            query = " OR ".join([f'"{kw}"' for kw in filter_keywords])
+
+        # --- Gmail profile test ---
         try:
-            profile = service.users().getProfile(userId='me').execute()
-            print(f"Gmail profile: {profile}")  # Debug output
+            service.users().getProfile(userId='me').execute()
         except HttpError as e:
             if e.resp.status == 401:
                 return render(request, 'inbox.html', {
@@ -84,49 +96,37 @@ def inbox_view(request):
                     'error': "Authentication failed. Please reconnect your Google account.",
                     'needs_reconnect': True
                 })
-            else:
-                return render(request, 'inbox.html', {
-                    'emails': [],
-                    'error': f"Gmail API error: {str(e)}",
-                    'needs_reconnect': False
-                })
-        
-        # Fetch messages
-        try:
-            results = service.users().messages().list(
-                userId='me',
-                labelIds=['INBOX'],
-                q=query,
-                maxResults=10  # Reduced for testing
-            ).execute()
-        except HttpError as e:
             return render(request, 'inbox.html', {
                 'emails': [],
-                'error': f"Failed to fetch messages: {str(e)}",
-                'needs_reconnect': e.resp.status == 401
+                'error': f"Gmail API error: {str(e)}",
+                'needs_reconnect': False
             })
 
-        messages = results.get('messages', [])
-        print(f"Found {len(messages)} messages")  # Debug output
+        # --- Fetch messages ---
+        results = service.users().messages().list(
+            userId='me',
+            labelIds=['INBOX'],
+            q=query,
+            maxResults=10
+        ).execute()
 
+        messages = results.get('messages', [])
         email_list = []
+
         for msg in messages:
             msg_data = service.users().messages().get(
-                userId='me', 
+                userId='me',
                 id=msg['id'],
                 format='metadata',
                 metadataHeaders=['Subject', 'From', 'Date']
             ).execute()
-            
+
             snippet = msg_data.get('snippet', '')
             headers = msg_data.get('payload', {}).get('headers', [])
-            
+
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '(No Subject)')
             from_email = next((h['value'] for h in headers if h['name'] == 'From'), '(Unknown Sender)')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), '')
-
-            # 🆕 Apply category filter
-            category = categorize_email(subject, snippet)
 
             email_list.append({
                 'id': msg['id'],
@@ -134,28 +134,25 @@ def inbox_view(request):
                 'from': from_email,
                 'snippet': snippet,
                 'date': date,
-                'category': category,  # added
             })
 
-        print(f"Processed {len(email_list)} emails")  # Debug output
-        
         return render(request, 'inbox.html', {
-            'emails': email_list, 
+            'emails': email_list,
             'error': None,
-            'keywords': keywords,
+            'keywords': ", ".join(filter_keywords),
             'needs_reconnect': False
         })
 
     except Exception as e:
         import traceback
-        error_traceback = traceback.format_exc()
-        print(f"Unexpected error in inbox_view: {error_traceback}")  # Debug
-        
+        print("Unexpected error in inbox_view:", traceback.format_exc())
         return render(request, 'inbox.html', {
             'emails': [],
             'error': f"Unexpected error: {str(e)}",
             'needs_reconnect': 'token' in str(e).lower() or 'auth' in str(e).lower()
         })
+
+
 
 @login_required
 def email_detail_view(request, email_id):

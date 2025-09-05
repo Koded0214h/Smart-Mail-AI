@@ -4,4 +4,7 @@ from .models import Profile
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = Profile
-        fields = ['filter']
+        fields = ['filters']
+        widgets = {
+            'filters': forms.TextInput(attrs={'placeholder': 'e.g. finance, work, promotions'})
+        }
